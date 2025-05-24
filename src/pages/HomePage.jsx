@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
     import { Button } from '@/components/ui/button';
     import { Input } from '@/components/ui/input';
     import { useToast } from '@/components/ui/use-toast';
-    import { UploadCloud, Copy, Check } from 'lucide-react';
+    import { UploadCloud, Copy, Check, FileCheck2, ImagePlus, Link2 } from 'lucide-react';
     import { motion } from 'framer-motion';
     import { supabase } from '@/lib/supabaseClient';
 
@@ -22,6 +22,11 @@ import React, { useState, useCallback } from 'react';
             setSelectedFile(file);
             setImageUrl('');
             setCopied(false);
+            toast({
+              title: "File Ready",
+              description: `File "${file.name}" selected and ready for upload.`,
+              variant: "success", 
+            });
           } else {
             toast({
               title: "Invalid File Type",
@@ -47,7 +52,8 @@ import React, { useState, useCallback } from 'react';
 
         try {
           const fileExt = selectedFile.name.split('.').pop();
-          const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+          const randomString = Math.random().toString(36).substring(2, 8); // 6 char random string
+          const fileName = `${randomString}_${Date.now()}.${fileExt}`;
           const filePath = `${fileName}`;
           
           const { error: uploadError } = await supabase.storage
@@ -58,18 +64,17 @@ import React, { useState, useCallback } from 'react';
             });
 
           if (uploadError) {
-            // Check if the error is specifically about the bucket not being found,
-            // which might indicate a policy issue despite the bucket existing.
             if (uploadError.message.includes('Bucket not found')) {
                  toast({
                     title: "Upload Failed: Bucket Issue",
-                    description: "The bucket 'imgurl' was found, but there might be a policy preventing uploads. Please check your Supabase Storage policies to ensure 'insert' operations are allowed for public/anon users.",
+                    description: "The bucket 'imgurl' was found, but policies might prevent uploads. Check Supabase Storage policies.",
                     variant: "destructive",
                     duration: 9000, 
                   });
             } else {
                 throw uploadError;
             }
+            setIsLoading(false);
             return; 
           }
 
@@ -82,32 +87,32 @@ import React, { useState, useCallback } from 'react';
           }
           
           let displayUrl = publicUrlData.publicUrl;
-          // The requirement to always have a .jpeg extension even if the uploaded file is different
-          // (e.g. png) is best handled by a server-side image conversion process.
-          // Supabase Storage URLs will reflect the actual stored file type.
-          // For this client-side implementation, we will keep the actual Supabase URL.
-          // If you need a specific .jpeg extension for all URLs regardless of input type,
-          // you would typically implement a Supabase Edge Function to handle image conversion
-          // and then return the URL to that converted .jpeg image.
-          // For now, we remove the forced .jpeg extension to reflect the true URL.
-          // if (!displayUrl.toLowerCase().endsWith('.jpeg')) {
-          //    const urlParts = displayUrl.split('.');
-          //    urlParts.pop(); 
-          //    displayUrl = urlParts.join('.') + '.jpeg'; 
-          // }
-
-
           setImageUrl(displayUrl);
-          toast({
-            title: "Upload Successful!",
-            description: "Your image URL has been generated.",
-          });
+          
+          navigator.clipboard.writeText(displayUrl)
+            .then(() => {
+              setCopied(true);
+              toast({
+                title: "Image Live & Copied!",
+                description: "URL generated and copied to clipboard.",
+                variant: "success" 
+              });
+              setTimeout(() => setCopied(false), 3000);
+            })
+            .catch(() => {
+              toast({ 
+                title: "Image Live!", 
+                description: "URL generated. Manual copy failed.",
+                variant: "success"
+              });
+            });
+
 
         } catch (error) {
           console.error("Upload error:", error);
           toast({
             title: "Upload Failed",
-            description: error.message || "There was an error uploading your image. Please ensure the bucket 'imgurl' exists and has correct public access policies in Supabase.",
+            description: error.message || "Error uploading image. Check 'imgurl' bucket policies.",
             variant: "destructive",
             duration: 9000,
           });
@@ -121,7 +126,11 @@ import React, { useState, useCallback } from 'react';
           navigator.clipboard.writeText(imageUrl)
             .then(() => {
               setCopied(true);
-              toast({ title: "Copied!", description: "URL copied to clipboard." });
+              toast({ 
+                title: "URL Copied!", 
+                description: "Link copied to your clipboard.",
+                variant: "copied" 
+              });
               setTimeout(() => setCopied(false), 2000);
             })
             .catch(() => {
@@ -130,7 +139,6 @@ import React, { useState, useCallback } from 'react';
         }
       };
       
-
       return (
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -139,6 +147,14 @@ import React, { useState, useCallback } from 'react';
           className="flex flex-col items-center justify-center space-y-8 p-4 md:p-8"
         >
           <div className="text-center space-y-2">
+            <motion.div 
+              initial={{ opacity: 0, y: -20}}
+              animate={{ opacity: 1, y: 0}}
+              transition={{duration: 0.6, delay: 0.1}}
+              className="inline-block p-3 bg-gradient-to-tr from-sky-500/20 to-cyan-500/20 rounded-full mb-4"
+            >
+              <Link2 className="h-10 w-10 text-sky-300" />
+            </motion.div>
             <motion.h1 
               className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-cyan-300"
               initial={{ opacity: 0, scale: 0.8 }}
@@ -153,29 +169,42 @@ import React, { useState, useCallback } from 'react';
           </div>
 
           <motion.div 
-            className="w-full max-w-lg p-6 md:p-8 bg-slate-800/50 backdrop-blur-sm rounded-xl shadow-2xl border border-slate-700 space-y-6"
+            className="w-full max-w-lg p-6 md:p-8 bg-slate-800/60 backdrop-blur-md rounded-xl shadow-2xl border border-slate-700/80 space-y-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
           >
-            <div className="space-y-2">
-              <label htmlFor="file-upload" className="block text-sm font-medium text-slate-200">
-                Choose an image
+            <div className="space-y-3">
+              <label 
+                htmlFor="file-upload" 
+                className="flex items-center justify-center w-full px-4 py-3 bg-gradient-to-r from-sky-600 to-cyan-500 hover:from-sky-500 hover:to-cyan-400 text-white font-semibold rounded-lg cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg hover:shadow-sky-500/30 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-slate-800 focus-within:ring-sky-400"
+              >
+                <ImagePlus className="mr-2 h-5 w-5" />
+                Choose an Image
               </label>
               <Input
                 id="file-upload"
                 type="file"
                 accept="image/*"
                 onChange={handleFileChange}
-                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-sky-500 file:text-sky-50 hover:file:bg-sky-600 transition-colors cursor-pointer focus-visible:ring-sky-500"
+                className="hidden" 
               />
-              {selectedFile && <p className="text-sm text-slate-400 mt-1">Selected: {selectedFile.name}</p>}
+              {selectedFile && !isLoading && !imageUrl && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center text-sm text-green-300 bg-green-500/20 p-3 rounded-md border border-green-500/50"
+                >
+                  <FileCheck2 className="h-5 w-5 mr-2 text-green-400" />
+                  <span>File "{selectedFile.name}" ready for upload.</span>
+                </motion.div>
+              )}
             </div>
             
             <Button 
               onClick={handleUpload} 
               disabled={isLoading || !selectedFile}
-              className="w-full bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white font-semibold py-3 text-base disabled:opacity-70 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105"
+              className="w-full bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-semibold py-3 text-base disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg hover:shadow-emerald-500/30"
             >
               {isLoading ? (
                 <>
@@ -201,35 +230,27 @@ import React, { useState, useCallback } from 'react';
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 transition={{ duration: 0.3 }}
-                className="mt-6 space-y-3 p-4 bg-slate-700/50 rounded-lg border border-slate-600"
+                className="mt-6 space-y-3 p-4 bg-slate-700/70 rounded-lg border border-slate-600/80 shadow-inner"
               >
-                <p className="text-sm font-medium text-slate-200">Generated URL:</p>
+                <p className="text-sm font-medium text-slate-100">Your Image URL is Ready:</p>
                 <div className="flex items-center space-x-2">
                   <Input 
                     type="text" 
                     value={imageUrl} 
                     readOnly 
-                    className="flex-grow bg-slate-800 border-slate-600 text-slate-50 focus:ring-sky-500"
+                    className="flex-grow bg-slate-800 border-slate-600 text-slate-200 focus:ring-sky-500 selection:bg-sky-500 selection:text-white"
                   />
                   <Button 
                     variant="outline" 
                     size="icon" 
                     onClick={handleCopyToClipboard}
-                    className="border-slate-600 hover:bg-slate-600 text-slate-300 hover:text-sky-300"
+                    className="border-slate-500 bg-slate-600/50 hover:bg-slate-500/70 text-slate-300 hover:text-sky-300 transition-colors"
+                    aria-label="Copy URL to clipboard"
                   >
                     {copied ? <Check className="h-5 w-5 text-green-400" /> : <Copy className="h-5 w-5" />}
                   </Button>
                 </div>
               </motion.div>
-            )}
-
-            {selectedFile && !imageUrl && !isLoading && (
-               <div className="mt-4 p-4 border border-dashed border-slate-600 rounded-lg">
-                 <img 
-                   alt={selectedFile.name || "Uploaded image preview"}
-                   className="max-w-full max-h-60 mx-auto rounded-md shadow-md"
-                  src="https://images.unsplash.com/photo-1697256200022-f61abccad430" />
-               </div>
             )}
           </motion.div>
         </motion.div>
